@@ -1,0 +1,143 @@
+{
+  "name": "Captura de leads do site → Planilha + aviso no WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "novo-lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Formulário do site",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "novo-lead"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "f1", "name": "nome", "value": "={{ ($json.body.nome || '').trim() }}", "type": "string" },
+            { "id": "f2", "name": "whatsapp", "value": "={{ ($json.body.whatsapp || '').replace(/\\D/g, '') }}", "type": "string" },
+            { "id": "f3", "name": "cidade", "value": "={{ ($json.body.cidade || '').trim() }}", "type": "string" },
+            { "id": "f4", "name": "necessidade", "value": "={{ ($json.body.necessidade || '').trim() }}", "type": "string" },
+            { "id": "f5", "name": "recebido_em", "value": "={{ $now.setZone('America/Sao_Paulo').toFormat('dd/MM/yyyy HH:mm') }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Organizar dados",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.nome }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.whatsapp.length }}",
+              "rightValue": 10,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Dados válidos?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "mode": "id", "value": "COLE_AQUI_O_ID_DA_SUA_PLANILHA" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Leads" },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Salvar na planilha",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [720, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WHATSAPP_API_URL }}/message/sendText/{{ $env.WHATSAPP_INSTANCIA }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [ { "name": "apikey", "value": "={{ $env.WHATSAPP_API_KEY }}" } ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $env.WHATSAPP_DONO, text: '🔔 Novo contato pelo site!\\n\\nNome: ' + $('Organizar dados').item.json.nome + '\\nWhatsApp: ' + $('Organizar dados').item.json.whatsapp + '\\nCidade: ' + $('Organizar dados').item.json.cidade + '\\nPrecisa de: ' + $('Organizar dados').item.json.necessidade }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Avisar no WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"mensagem\": \"Recebemos seu contato! Em breve falamos com você.\" } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Responder sucesso",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": false, \"mensagem\": \"Informe nome e um WhatsApp válido com DDD.\" } }}",
+        "options": { "responseCode": 400 }
+      },
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Responder erro",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, 420]
+    }
+  ],
+  "connections": {
+    "Formulário do site": { "main": [[{ "node": "Organizar dados", "type": "main", "index": 0 }]] },
+    "Organizar dados": { "main": [[{ "node": "Dados válidos?", "type": "main", "index": 0 }]] },
+    "Dados válidos?": {
+      "main": [
+        [{ "node": "Salvar na planilha", "type": "main", "index": 0 }],
+        [{ "node": "Responder erro", "type": "main", "index": 0 }]
+      ]
+    },
+    "Salvar na planilha": { "main": [[{ "node": "Avisar no WhatsApp", "type": "main", "index": 0 }]] },
+    "Avisar no WhatsApp": { "main": [[{ "node": "Responder sucesso", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
